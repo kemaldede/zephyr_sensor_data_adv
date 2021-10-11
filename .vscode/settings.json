@@ -1,0 +1,18 @@
+{
+  "nrf-connect.topdir": "f:\\nrf-sdk\\ncs\\v1.7.0",
+  "nrf-connect.toolchain.path": "f:\\nrf-sdk\\ncs\\v1.7.0\\toolchain",
+  "nrf-connect.applications": [
+    "f:\\nrf-sdk\\projeler\\dht_adv"
+  ],
+  "kconfig.zephyr.west": "f:\\nrf-sdk\\ncs\\v1.7.0\\toolchain\\opt\\bin\\Scripts\\west.exe",
+  "kconfig.zephyr.base": "f:\\nrf-sdk\\ncs\\v1.7.0\\zephyr",
+  "kconfig.zephyr.board": {
+    "board": "nrf52dk_nrf52832",
+    "arch": "arm",
+    "dir": "f:\\nrf-sdk\\ncs\\v1.7.0\\zephyr\\boards\\arm\\nrf52dk_nrf52832"
+  },
+  "C_Cpp.default.configurationProvider": "nrf-connect",
+  "files.associations": {
+    "custom_service.h": "c"
+  }
+}
