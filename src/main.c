@@ -11,6 +11,7 @@
 #include <device.h>
 #include <drivers/gpio.h>
 #include <sys/printk.h>
+#include <sys/reboot.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -44,6 +45,7 @@ const struct device *dht11;
 
 static bool paired = false;
 static bool button_press = false;
+static bool connected_val = false;
 
 struct bt_conn *default_conn;
 
@@ -91,7 +93,7 @@ static void auth_confirm(struct bt_conn *conn, unsigned int passkey)
 			printk("Peripheral is close to Central Device.\n");
 			bt_conn_auth_passkey_confirm(default_conn);
 			paired = true;
-			start_sensor_reading();
+			// start_sensor_reading();
 			k_work_cancel_delayable(&rssi_timer_work); // Connection established. Cancel the RSSI reading. 
 		}
 	}
@@ -135,29 +137,34 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (err)
 	{
 		printk("Not Connected : %d", err);
+		connected_val = false;
 	}
 	else
 	{
 		printk("Connected\n");
+		connected_val = true;
+		start_sensor_reading();
 		default_conn = bt_conn_ref(conn);
 		int rc = bt_conn_set_security(default_conn, BT_SECURITY_L4);
 		printk("requested security level 4 [%d]\n",rc);
+		
 		if(paired == false)
 		{
 			start_sampling_rssi();
-		}	
+		}
 	}
 }
 
 static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
+	
 	if (default_conn)
 	{
 		printk("Disconnected\n");
 		bt_conn_unref(default_conn);
 		default_conn = NULL;
     	sampling = 0;
-		// k_work_cancel_delayable(&sensor_read_work);
+		connected_val = false;
 	}
 }
 
@@ -239,8 +246,6 @@ void reset_counter_handler(struct k_timer *dummy)
 	int val = gpio_pin_get(my_gpio_port,BUTTON1_PIN);
 	if( val == 0){
 		clear_all_bonds();	
-		gpio_pin_toggle(my_gpio_port,LED1_PIN);
-		__NVIC_SystemReset();
 	}  
 	button_press = false; 
 	
@@ -279,34 +284,42 @@ int init_sensor()
 
 static void read_sensor()
 {
-	int rc = sensor_sample_fetch(dht11);
-
-	if (rc != 0) {
-		printk("Sensor fetch failed: %d\n", rc);
-	}
-
-	struct sensor_value temperature;
-	struct sensor_value humidity;
-
-	rc = sensor_channel_get(dht11, SENSOR_CHAN_AMBIENT_TEMP, &temperature);
-	if (rc == 0) 
+	if(connected_val)
 	{
-		rc = sensor_channel_get(dht11, SENSOR_CHAN_HUMIDITY,&humidity);
+		int rc = sensor_sample_fetch(dht11);
+
+		if (rc != 0) {
+			printk("Sensor fetch failed: %d\n", rc);
+		}
+
+		struct sensor_value temperature;
+		struct sensor_value humidity;
+
+		rc = sensor_channel_get(dht11, SENSOR_CHAN_AMBIENT_TEMP, &temperature);
+		if (rc == 0) 
+		{
+			rc = sensor_channel_get(dht11, SENSOR_CHAN_HUMIDITY,&humidity);
+		}
+		if (rc != 0) 
+		{
+			printk("get failed: %d\n", rc);
+		}
+
+		T_vals[0]= sensor_value_to_double(&temperature);
+		H_vals[0] = sensor_value_to_double(&humidity);
+		printk("%.1f Cel ; %.1f %%RH\n",T_vals[0],
+										H_vals[0]);
+
+		bt_gatt_notify(NULL, &th_svc.attrs[1], T_vals, sizeof(T_vals));
+		bt_gatt_notify(NULL, &th_svc.attrs[3], H_vals, sizeof(H_vals));
+
+		k_work_schedule(&sensor_read_work, K_SECONDS(5)); // Next reading after 5 seconds later
 	}
-	if (rc != 0) 
+	else
 	{
-		printk("get failed: %d\n", rc);
+		k_work_cancel_delayable(&sensor_read_work);
 	}
 
-	T_vals[0]= sensor_value_to_double(&temperature);
-	H_vals[0] = sensor_value_to_double(&humidity);
-	printk("%.1f Cel ; %.1f %%RH\n",T_vals[0],
-		    						H_vals[0]);
-
-	bt_gatt_notify(NULL, &th_svc.attrs[2], T_vals, sizeof(T_vals));
-    bt_gatt_notify(NULL, &th_svc.attrs[4], H_vals, sizeof(H_vals));
-
-	k_work_schedule(&sensor_read_work, K_SECONDS(5)); // Next reading after 5 seconds later
 }
 
 static void start_sensor_reading(){
@@ -336,7 +349,7 @@ void main(void)
 		return;
 	}
 
-	clear_all_bonds();
+	// clear_all_bonds();
 
 	bt_conn_cb_register(&conn_callbacks);
 
